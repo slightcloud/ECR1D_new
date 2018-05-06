@@ -17,11 +17,13 @@ c=3e8;                      %光速，单位：m/s
 Te_average=10;              %平均电子温度，单位：eV
 n_e_average=5e17;           %平均电子密度，单位：m^-3
 n0=1e18;                    %中性原子密度，单位：m^-3
+T=273.15+300;               %系统温度为300℃，单位：K
 lamda=sqrt(EPS0*Te_average/(n0*q_e));    %德拜长度，单位：m
 z_min=0;                                 %z方向的最小值，单位：m
 L_real=0.1035;                           %离子源z方向的最大值，单位：m
 dz=lamda;                                %设置空间间隔
 dt_e=dz/(2*c);                             %设置时间间隔，为保证模拟精确度，保证dt<=dz/c，一般设为dz/(2*c)单位：s
+dt_i=100*dt_e;                           %离子的运动时间设置为电子运动时间的100倍
 nz=round(L_real/dz)+1;                   %格点数
 z_max=dz*(nz-1);                         %模拟区域z方向的最大值
 spwt=1e8;                                %每个宏粒子包含的真实粒子数
@@ -33,17 +35,23 @@ N_Li3=0;                                 %Li3+的数目
 N_Li_ex=0;                               %激发态Li原子的数目
 tol=0.001;                               %电势求解的精度值
 max_part=10000;                           %粒子容器的最大值
-%B_ex_z=0.0875;                             %外部永磁铁产生的磁感应强度，单位：T
+%B_ex_z=0.0875;                          %外部永磁铁产生的磁感应强度，单位：T
 E0=1.5e5;                                %微波电场强度的幅值，单位：V/m（不确定）
 B0=0.0001;                               %微波磁感应强度的幅值，单位:T（不确定）
 w=2.45;                                  %微波的频率,单位:GHz
 step_num=25000;                          %总共运行的时间步数
 N_phi=5e4;                               %电势求解的迭代步数
+R_i_max=7.8034e-7;                       %各个价态总电离率的最大值
+E_i_Li1=5.4;                             %Li0->Li1的电离能，单位：eV
+E_i_Li2=75.77;                           %Li1->Li2的电离能，单位：eV
+E_i_Li3=122.664;                         %Li2->Li3的电离能，单位：eV
 z=zeros(nz,1);                           %用于盛放每个格点的坐标
 z(2:nz,1)=(1:nz-1)'*dz*1000;                  %每个格点的坐标值，单位：mm
 B_ex_z=0.0001*(2595.7+32.4092*z-3.1038*z.^2-0.0130847*z.^3+0.00198809*z.^4-2.48996e-5*z.^5+8.9815e-8*z.^6);   %根据实验上测得的磁感应强度值进行拟合，单位：T
 %plot(z,B_ex_z);
-
+B_ir=[-7.97027	4.27075	-3.96662	1.78936	-0.400521	0.0346181
+    -12.2121	9.29911	-6.78284	2.46302	-0.453047	0.0332396
+    -34.5328	36.724	-21.6441	6.55211	-1.0141	0.0636916]; %fitting parameters of ionization rate
 
 
 %预分配空间
@@ -83,81 +91,242 @@ vel_e(1:N_e,:)=vth_e*2*(rand(N_e,3)+rand(N_e,3)+rand(N_e,3)-1.5);               
 vel_e(1:N_e,:)=UpdateVelocity(E_e(1:N_e,:),B_e(1:N_e,:),vel_e(1:N_e,:),-0.5*dt_e);    %将电子的速度向前移动半个时间步长
 
 %开始主循环，即对时间的循环
-for ts_i=1:step_num                                                                 %运行的时间步数
+for ts_i=1:step_num                 %运行的时间步数
     
-    chg=zeros(nz,4);                                                            %用于存放每个格点分配到的电荷量，1~4列分别代表，电子，Li1+，Li2+，Li3+
-    den_vel_Li1=zeros(nz,3);                                                          %用于存放每个格点上Li+的电流密度分量
-    den_vel_Li2=zeros(nz,3);                                                          %用于存放每个格点上Li2+的电流密度分量
-    den_vel_Li3=zeros(nz,3);                                                          %用于存放每个格点上Li3+的电流密度分量
-    count=zeros(nz-1,3);            %用于计算每个单元格内的粒子数，1~3列分别代表Li+，Li2+和Li3+
-    count_g=zeros(nz,3);            %用于计算每个格点上的粒子数密度，1~3列分别代表Li+，Li2+和Li3+
+    %chg=zeros(nz,4);                %用于存放每个格点分配到的电荷量，1~4列分别代表:电子，Li1+，Li2+，Li3+
+    %den_vel_Li1=zeros(nz,3);        %用于存放每个格点上Li+的电流密度分量
+    %den_vel_Li2=zeros(nz,3);        %用于存放每个格点上Li2+的电流密度分量
+    %den_vel_Li3=zeros(nz,3);        %用于存放每个格点上Li3+的电流密度分量
+    %count_Li=zeros(nz-1,3);            %用于计算每个单元格内的粒子数，1~3列分别代表Li+，Li2+和Li3+
+    %count_g_Li=zeros(nz,3);            %用于计算每个格点上的粒子数密度，1~3列分别代表Li+，Li2+和Li3+
+    
     %分配Li+的电荷和电流密度到临近格点上
-    for p=1:N_Li1
+    %for p=1:N_Li1
         
-        fi=1+pos_Li1(p)/dz;                 %实际格点位置，为浮点数
-        i=floor(fi);                        %对应整数格点位置
-        hz=fi-i;                            %粒子与第i个格点之间的距离占距离步长的比例
+    %    fi=1+pos_Li1(p)/dz;                 %实际格点位置，为浮点数
+    %    i=floor(fi);                        %对应整数格点位置
+     %   hz=fi-i;                            %粒子与第i个格点之间的距离占距离步长的比例
         
-        %将Li+电荷按照比例分配到临近的两个格点上
-        chg(i,2)=chg(i,2)+(1-hz);      %分配到第i个格点上的电荷比例
-        chg(i+1,2)=chg(i+1,2)+hz;      %分配到第i+1个格点上的电荷比例
-        
-        count(i,1)=count(i,1)+1;       %对每个单元格内的Li+计数
-        
-        %将速度按比例分配到临近的两个格点上
-        den_vel_Li1(i,:)=den_vel_Li1(i,:)+spwt*q_e*vel_Li1(p,:)*(1-hz);   %分配到第i个格点上的速度
-        den_vel_Li1(i+1,:)=den_vel_Li1(i,:)+spwt*q_e*vel_Li1(p,:)*hz;     %分配到第i+1个格点上的速度
-    end
+%         %将Li+电荷按照比例分配到临近的两个格点上
+%         chg(i,2)=chg(i,2)+(1-hz);      %分配到第i个格点上的电荷比例
+%         chg(i+1,2)=chg(i+1,2)+hz;      %分配到第i+1个格点上的电荷比例
+%         
+%         count_Li(i,1)=count_Li(i,1)+1;       %对每个单元格内的Li+计数
+%         
+%         %将速度按比例分配到临近的两个格点上
+%         den_vel_Li1(i,:)=den_vel_Li1(i,:)+spwt*q_e*vel_Li1(p,:)*(1-hz);   %分配到第i个格点上的速度
+%         den_vel_Li1(i+1,:)=den_vel_Li1(i,:)+spwt*q_e*vel_Li1(p,:)*hz;     %分配到第i+1个格点上的速度
+%     end
+%     
+%     %分配Li2+的电荷和电流密度到临近格点上
+%     for p=1:N_Li2
+%         
+%         fi=1+pos_Li2(p)/dz;                 %实际格点位置，为浮点数
+%         i=floor(fi);                        %对应整数格点位置
+%         hz=fi-i;                            %粒子与第i个格点之间的距离占距离步长的比例
+%         
+%         %将Li2+电荷按照比例分配到临近的两个格点上
+%         chg(i,3)=chg(i,3)+(1-hz);      %分配到第i个格点上的电荷比例
+%         chg(i+1,3)=chg(i+1,3)+hz;      %分配到第i+1个格点上的电荷比例
+%         
+%         count_Li(i,2)=count_Li(i,2)+1;       %对每个单元格内的Li2+计数
+%         
+%         %将速度按比例分配到临近的两个格点上
+%         den_vel_Li2(i,:)=den_vel_Li2(i,:)+spwt*2*q_e*vel_Li2(p,:)*(1-hz);   %分配到第i个格点上的速度
+%         den_vel_Li2(i+1,:)=den_vel_Li2(i,:)+spwt*2*q_e*vel_Li2(p,:)*hz;     %分配到第i+1个格点上的速度
+%     end
+%     
+%     %分配Li3+的电荷和电流密度到临近格点上
+%     for p=1:N_Li3
+%         
+%         fi=1+pos_Li3(p)/dz;                 %实际格点位置，为浮点数
+%         i=floor(fi);                        %对应整数格点位置
+%         hz=fi-i;                            %粒子与第i个格点之间的距离占距离步长的比例
+%         
+%         %将Li3+电荷按照比例分配到临近的两个格点上
+%         chg(i,4)=chg(i,4)+(1-hz);      %分配到第i个格点上的电荷比例
+%         chg(i+1,4)=chg(i+1,4)+hz;      %分配到第i+1个格点上的电荷比例
+%         
+%         count_Li(i,3)=count_Li(i,3)+1;       %对每个单元格内的Li3+计数
+%         
+%         %将速度按比例分配到临近的两个格点上
+%         den_vel_Li3(i,:)=den_vel_Li3(i,:)+spwt*3*q_e*vel_Li3(p,:)*(1-hz);   %分配到第i个格点上的速度
+%         den_vel_Li3(i+1,:)=den_vel_Li3(i,:)+spwt*3*q_e*vel_Li3(p,:)*hz;     %分配到第i+1个格点上的速度
+%     end
+%     
+%     %计算每个格点上的粒子密度
+%     for count_i=2:nz-1
+%         count_g_Li(count_i,:)=0.5*(count_Li(count_i-1,:)+count_Li(count_i,:))/(2*dz);
+%     end
+%     count_g_Li(1,:)=count_Li(1,:)/dz;      %第一个格点的粒子密度
+%     count_g_Li(nz,:)=count_Li(nz-1,:)/dz;  %最后一个格点的粒子密度
+%     
+%     J_i=1e5*(den_vel_Li1.*count_g_Li(:,1)+den_vel_Li2.*count_g_Li(:,2)+den_vel_Li3.*count_g_Li(:,3));  %离子在每个格点上的电流密度
     
-    %分配Li2+的电荷和电流密度到临近格点上
-    for p=1:N_Li2
+    %开始电子的运动循环
+    for ts_e=1:dt_i/dt_e                                                                 %离子运动一步，电子运动dt_i/dt_e步
         
-        fi=1+pos_Li2(p)/dz;                 %实际格点位置，为浮点数
-        i=floor(fi);                        %对应整数格点位置
-        hz=fi-i;                            %粒子与第i个格点之间的距离占距离步长的比例
-        
-        %将Li2+电荷按照比例分配到临近的两个格点上
-        chg(i,3)=chg(i,3)+(1-hz);      %分配到第i个格点上的电荷比例
-        chg(i+1,3)=chg(i+1,3)+hz;      %分配到第i+1个格点上的电荷比例
-        
-        count(i,2)=count(i,2)+1;       %对每个单元格内的Li2+计数
-        
-        %将速度按比例分配到临近的两个格点上
-        den_vel_Li2(i,:)=den_vel_Li2(i,:)+spwt*2*q_e*vel_Li2(p,:)*(1-hz);   %分配到第i个格点上的速度
-        den_vel_Li2(i+1,:)=den_vel_Li2(i,:)+spwt*2*q_e*vel_Li2(p,:)*hz;     %分配到第i+1个格点上的速度
-    end
+        chg=zeros(nz,4);                %用于存放每个格点分配到的电荷量，1~4列分别代表:电子，Li1+，Li2+，Li3+
+        den_vel_Li1=zeros(nz,3);        %用于存放每个格点上Li+的电流密度分量
+        den_vel_Li2=zeros(nz,3);        %用于存放每个格点上Li2+的电流密度分量
+        den_vel_Li3=zeros(nz,3);        %用于存放每个格点上Li3+的电流密度分量
+        count_Li=zeros(nz-1,3);            %用于计算每个单元格内的粒子数，1~3列分别代表Li+，Li2+和Li3+
+        count_g_Li=zeros(nz,3);            %用于计算每个格点上的粒子数密度，1~3列分别代表Li+，Li2+和Li3+
     
-    %分配Li3+的电荷和电流密度到临近格点上
-    for p=1:N_Li3
+        for p=1:N_Li1
+            fi=1+pos_Li1(p)/dz;                 %实际格点位置，为浮点数
+            i=floor(fi);                        %对应整数格点位置
+            count_Li(i,1)=count_Li(i,1)+1;       %对每个单元格内的Li+计数
+        end
+        for p=1:N_Li2
+            fi=1+pos_Li2(p)/dz;                 %实际格点位置，为浮点数
+            i=floor(fi);                        %对应整数格点位置
+            count_Li(i,2)=count_Li(i,2)+1;       %对每个单元格内的Li2+计数
+        end
+        for p=1:N_Li3
+            fi=1+pos_Li3(p)/dz;                 %实际格点位置，为浮点数
+            i=floor(fi);                        %对应整数格点位置
+            count_Li(i,3)=count_Li(i,3)+1;       %对每个单元格内的Li3+计数
+        end
         
-        fi=1+pos_Li3(p)/dz;                 %实际格点位置，为浮点数
-        i=floor(fi);                        %对应整数格点位置
-        hz=fi-i;                            %粒子与第i个格点之间的距离占距离步长的比例
+        %首先进行MCC过程
+        den_Li=count_Li/(100*dz);       %每个单元格内Li+，Li2+和Li3+的数密度，单位：cm-1
+        nu_t=(n0+den_Li(:,1)+den_Li(:,2))*R_i_max; %每个单元格内总的电子碰撞频率，考虑要不要给锂离子乘以spwt???
+        P_emax=1-exp(-nu_t*dt_e);                    %每个单元格内任意一个电子的最大碰撞概率
+        count_e=zeros(nz-1,1);                     %用来对每个单元格内的电子进行计数
+        distri_e=zeros(N_e,nz-1);                   %用来盛放每个单元格内的电子序数
+        for p=1:N_e
+            fi=1+pos_e(p)/dz;            %实际格点位置，为浮点数
+            i=floor(fi);               %对应整数格点位置
+            count_e(i)=count_e(i)+1;   %相应单元格内的计数器计数一次
+            distri_e(count_e(i),i)=p;  %每个单元格内的电子序数
+        end
+        N_e_mcc=P_emax*count_e;        %每个单元格内抽取的电子个数
+        N_e_sam=zeros(max(N_e_mcc),nz-1); %该数列用来存放每个单元随机抽出的电子的序号
+        Ek_e=zeros(max(N_e_mcc),nz-1);    %该矩阵用来存放抽样出来的电子的动能
+        nu_Li1=zeros(max(N_e_mcc),nz-1);  %该矩阵用来存放抽样出来的e+Li0->Li+的碰撞频率
+        nu_Li2=zeros(max(N_e_mcc),nz-1);  %该矩阵用来存放抽样出来的e+Li+->Li2+的碰撞频率
+        nu_Li3=zeros(max(N_e_mcc),nz-1);  %该矩阵用来存放抽样出来的e+Li2+->Li3+的碰撞频率
+        for i=1:nz-1            %开始对每个单元格进行蒙特卡洛抽样
+            N_e_sam(1:N_e_mcc(i),i)=(randperm(count_e(i),N_e_mcc(i)))';  %randperm(n,k)函数用于从n个数中随机抽取不相同的k个数
+            for j=1:N_e_mcc(i)
+                Ek_e(j,i)=0.5*m_e*sum((vel_e(distri_e(N_e_sam(j),i),:)).^2)/q_e;  %算出每个抽取出来的电子的动能，并转换为eV单位
+                nu_Li1(j,i)=n0*10^(B_ir(1,:)*[1;log10(Ek_e(j,i));(log10(Ek_e(j,i)))^2;(log10(Ek_e(j,i)))^3;(log10(Ek_e(j,i)))^4;(log10(Ek_e(j,i)))^5])/nu_t(i); %根据数据库中的数据拟合曲线求出抽样电子对应的产生Li+的碰撞频率
+                nu_Li2(j,i)=den_Li(i,1)*10^(B_ir(2,:)*[1;log10(Ek_e(j,i));(log10(Ek_e(j,i)))^2;(log10(Ek_e(j,i)))^3;(log10(Ek_e(j,i)))^4;(log10(Ek_e(j,i)))^5])/nu_t(i); %产生Li2+的碰撞频率
+                nu_Li3(j,i)=den_Li(i,2)*10^(B_ir(3,:)*[1;log10(Ek_e(j,i));(log10(Ek_e(j,i)))^2;(log10(Ek_e(j,i)))^3;(log10(Ek_e(j,i)))^4;(log10(Ek_e(j,i)))^5])/nu_t(i); %产生Li3+的碰撞频率
+            end
+        end
+        nu_Li1_Li2=nu_Li1+nu_Li2;             %构造数列的第二项，第一项是nu_Li1
+        nu_Li1_Li2_Li3=nu_Li1+nu_Li2+nu_Li3;  %构造数列的第三项
+        for i=1:nz-1               %遍历每个单元格
+            for j=1:N_e_mcc(i)     %遍历每个单元格内抽出的电子
+                R=rand();          %R为（0，1）之间的随机数
+                if R<=nu_Li1(j,i)&&Ek_e(j,i)>=E_i_Li1                                        %Li0->Li+事件发生
+                    N_Li1=N_Li1+1;                                                           %产生了一个新的Li+
+                    N_e=N_e+1;                                                               %产生了一个新的电子
+                    pos_Li1(N_Li1)=pos(distri_e(N_e_sam(j),i));                              %新产生的Li+的位置与入射电子的相同
+                    vel_Li1(N_Li1,:)=randraw('maxwell',k*T/m_Li,1)*random_unit_vector(3,1)'; %新产生的Li+的速度服从麦克斯韦分布
+                    pos_e(N_e)=pos_Li1(N_Li1);                                               %新产生的电子和新产生的Li+在相同的位置
+                    vel_e_temp=0.5*sqrt(2*(Ek_e(j,i)-E_i_Li1)/m_e)*random_unit_vector(3,2);  %认为电子对离子的能量没有贡献，电子动能减去电离能后平分给散射电子和新产生的电子，random_unit_vector函数用来产生各向同性的电子
+                    vel_e(N_e,:)=vel_e_temp(:,1)';                                           %新生成的电子的速度
+                    vel_e(distri_e(N_e_sam(j),i),:)=vel_e_temp(:,2)';                        %散射电子的速度
+                end
+                if R>nu_Li1(j,i)&&R<=nu_Li1_Li2&&Ek_e(j,i)>=E_i_Li2                         %Li+->Li2+事件发生
+                    N_Li2=N_Li2+1;                                                          %产生了一个新的Li2+
+                    N_e=N_e+1;                                                              %产生了一个新的电子
+                    O_Li1=randperm(count_Li(i,1),1);                                        %消亡的Li+对应的序号，随机在第i个单元格中选择
+                    N_Li1=N_Li1-1;                                                          %Li+数目减少一个
+                    pos_Li2(N_Li2)=pos_Li1(O_Li1);                                          %新产生的Li2+的位置与消亡的Li+的位置相同
+                    vel_Li2(N_Li2,:)=vel_Li1(O_Li1,:);                                      %新产生的Li2+的速度与消亡掉的Li+的速度相同
+                    pos_e(N_e)=pos_Li2(N_Li2);                                              %新产生的电子的位置和Li2+产生的位置相同
+                    vel_e_temp=0.5*sqrt(2*(Ek_e(j,i)-E_i_Li2)/m_e)*random_unit_vector(3,2); %认为电子对离子的能量没有贡献，电子动能减去电离能后平分给散射电子和新产生的电子，random_unit_vector函数用来产生各向同性的电子
+                    vel_e(N_e,:)=vel_e_temp(:,1)';                                          %新生成的电子的速度
+                    vel_e(distri_e(N_e_sam(j),i),:)=vel_e_temp(:,2)';                       %散射电子的速度
+                end
+                if R>nu_Li1_Li2(j,i)&&R<=nu_Li1_Li2_Li3&&Ek_e(j,i)>=E_i_Li3                 %Li2+->Li3+事件发生
+                    N_Li3=N_Li3+1;                                                          %产生了一个新的Li3+
+                    N_e=N_e+1;                                                              %产生了一个新的电子
+                    O_Li2=randperm(count_Li(i,2),1);                                        %消亡的Li2+对应的序号，随机在第i个单元格中选择
+                    N_Li2=N_Li2-1;                                                          %Li2+数目减少一个
+                    pos_Li3(N_Li3)=pos_Li2(O_Li2);                                          %新产生的Li3+的位置与消亡的Li2+的位置相同
+                    vel_Li3(N_Li3,:)=vel_Li2(O_Li2,:);                                      %新产生的Li3+的速度与消亡掉的Li2+的速度相同
+                    pos_e(N_e)=pos_Li3(N_Li3);                                              %新产生的电子的位置和Li3+产生的位置相同
+                    vel_e_temp=0.5*sqrt(2*(Ek_e(j,i)-E_i_Li3)/m_e)*random_unit_vector(3,2); %认为电子对离子的能量没有贡献，电子动能减去电离能后平分给散射电子和新产生的电子，random_unit_vector函数用来产生各向同性的电子
+                    vel_e(N_e,:)=vel_e_temp(:,1)';                                          %新生成的电子的速度
+                    vel_e(distri_e(N_e_sam(j),i),:)=vel_e_temp(:,2)';                       %散射电子的速度
+                end
+            end
+        end
         
-        %将Li3+电荷按照比例分配到临近的两个格点上
-        chg(i,4)=chg(i,4)+(1-hz);      %分配到第i个格点上的电荷比例
-        chg(i+1,4)=chg(i+1,4)+hz;      %分配到第i+1个格点上的电荷比例
+        %分配Li+的电荷和电流密度到临近格点上
+        for p=1:N_Li1
+            
+            fi=1+pos_Li1(p)/dz;                 %实际格点位置，为浮点数
+            i=floor(fi);                        %对应整数格点位置
+            hz=fi-i;                            %粒子与第i个格点之间的距离占距离步长的比例
+            
+            %将Li+电荷按照比例分配到临近的两个格点上
+            chg(i,2)=chg(i,2)+(1-hz);      %分配到第i个格点上的电荷比例
+            chg(i+1,2)=chg(i+1,2)+hz;      %分配到第i+1个格点上的电荷比例
+            
+            count_Li(i,1)=count_Li(i,1)+1;       %对每个单元格内的Li+计数
+            
+            %将速度按比例分配到临近的两个格点上
+            den_vel_Li1(i,:)=den_vel_Li1(i,:)+spwt*q_e*vel_Li1(p,:)*(1-hz);   %分配到第i个格点上的速度
+            den_vel_Li1(i+1,:)=den_vel_Li1(i,:)+spwt*q_e*vel_Li1(p,:)*hz;     %分配到第i+1个格点上的速度
+        end
         
-        count(i,3)=count(i,3)+1;       %对每个单元格内的Li3+计数
+        %分配Li2+的电荷和电流密度到临近格点上
+        for p=1:N_Li2
+            
+            fi=1+pos_Li2(p)/dz;                 %实际格点位置，为浮点数
+            i=floor(fi);                        %对应整数格点位置
+            hz=fi-i;                            %粒子与第i个格点之间的距离占距离步长的比例
+            
+            %将Li2+电荷按照比例分配到临近的两个格点上
+            chg(i,3)=chg(i,3)+(1-hz);      %分配到第i个格点上的电荷比例
+            chg(i+1,3)=chg(i+1,3)+hz;      %分配到第i+1个格点上的电荷比例
+            
+            count_Li(i,2)=count_Li(i,2)+1;       %对每个单元格内的Li2+计数
+            
+            %将速度按比例分配到临近的两个格点上
+            den_vel_Li2(i,:)=den_vel_Li2(i,:)+spwt*2*q_e*vel_Li2(p,:)*(1-hz);   %分配到第i个格点上的速度
+            den_vel_Li2(i+1,:)=den_vel_Li2(i,:)+spwt*2*q_e*vel_Li2(p,:)*hz;     %分配到第i+1个格点上的速度
+        end
         
-        %将速度按比例分配到临近的两个格点上
-        den_vel_Li3(i,:)=den_vel_Li3(i,:)+spwt*3*q_e*vel_Li3(p,:)*(1-hz);   %分配到第i个格点上的速度
-        den_vel_Li3(i+1,:)=den_vel_Li3(i,:)+spwt*3*q_e*vel_Li3(p,:)*hz;     %分配到第i+1个格点上的速度
-    end
-    
-    %计算每个格点上的粒子密度
-    for count_i=2:nz-1
-        count_g(count_i,:)=0.5*(count(count_i-1,:)+count(count_i,:))/(2*dz);
-    end
-    count_g(1,:)=count(1,:)/dz;      %第一个格点的粒子密度
-    count_g(nz,:)=count(nz-1,:)/dz;  %最后一个格点的粒子密度
-    
-    J_i=1e5*(den_vel_Li1.*count_g(:,1)+den_vel_Li2.*count_g(:,2)+den_vel_Li3.*count_g(:,3));  %离子在每个格点上的电流密度
-    
-    for ts_e=1:100                                                                  %离子运动一步，电子运动100步
+        %分配Li3+的电荷和电流密度到临近格点上
+        for p=1:N_Li3
+            
+            fi=1+pos_Li3(p)/dz;                 %实际格点位置，为浮点数
+            i=floor(fi);                        %对应整数格点位置
+            hz=fi-i;                            %粒子与第i个格点之间的距离占距离步长的比例
+            
+            %将Li3+电荷按照比例分配到临近的两个格点上
+            chg(i,4)=chg(i,4)+(1-hz);      %分配到第i个格点上的电荷比例
+            chg(i+1,4)=chg(i+1,4)+hz;      %分配到第i+1个格点上的电荷比例
+            
+            count_Li(i,3)=count_Li(i,3)+1;       %对每个单元格内的Li3+计数
+            
+            %将速度按比例分配到临近的两个格点上
+            den_vel_Li3(i,:)=den_vel_Li3(i,:)+spwt*3*q_e*vel_Li3(p,:)*(1-hz);   %分配到第i个格点上的速度
+            den_vel_Li3(i+1,:)=den_vel_Li3(i,:)+spwt*3*q_e*vel_Li3(p,:)*hz;     %分配到第i+1个格点上的速度
+        end
         
+        %计算每个格点上的粒子密度
+        for count_i=2:nz-1
+            count_g_Li(count_i,:)=0.5*(count_Li(count_i-1,:)+count_Li(count_i,:))/(2*dz);
+        end
+        count_g_Li(1,:)=count_Li(1,:)/dz;      %第一个格点的粒子密度
+        count_g_Li(nz,:)=count_Li(nz-1,:)/dz;  %最后一个格点的粒子密度
+        
+        J_i=1e5*(den_vel_Li1.*count_g_Li(:,1)+den_vel_Li2.*count_g_Li(:,2)+den_vel_Li3.*count_g_Li(:,3));  %离子在每个格点上的电流密度
+        
+        
+        
+        
+        %计算电子的电荷密度和电流密度
         chg(:,1)=zeros(nz,1);                                                       %用于存放每个格点分配到的电子的电荷量
-        den=zeros(nz,1);                                                            %每个格点的电荷密度，单位：C/m
+        %den=zeros(nz,1);                                                            %每个格点的电荷密度，单位：C/m
         den_vel_e=zeros(nz,3);                                                        %用于存放每个格点上的电流密度分量
         B_mic_old=B_mic;                                                            %B_mic_old用于和B_mic求平均，从而用于求解速度
         pos_e_half=zeros(N_e,1);                                                      %用于存放半时刻时的粒子位置
@@ -197,8 +366,8 @@ for ts_i=1:step_num                                                             
             
             
             %将速度按比例分配到临近的两个格点上
-            den_vel_e(i_half,:)=den_vel_e(i_half,:)+spwt*q_e*vel_e(p,:)*(1-hz_half);  %分配到第i个格点上的速度
-            den_vel_e(i_half+1,:)=den_vel_e(i_half+1,:)+spwt*q_e*vel_e(p,:)*hz_half;  %分配到第i+1个格点上的速度
+            den_vel_e(i_half,:)=den_vel_e(i_half,:)+spwt*(-q_e)*vel_e(p,:)*(1-hz_half);  %分配到第i个格点上的速度
+            den_vel_e(i_half+1,:)=den_vel_e(i_half+1,:)+spwt*(-q_e)*vel_e(p,:)*hz_half;  %分配到第i+1个格点上的速度
         end
         
         den=spwt*q_e*(-1*chg(:,1)+1*chg(:,2)+2*chg(:,3)+3*chg(:,4))/dz;       %每个格点上的电荷密度
@@ -303,7 +472,7 @@ for ts_i=1:step_num                                                             
             %B_e(p,3)=B_e(p,3)+B_ex_z(i)*(1-hz)+B_ex_z(i+1)*hz;   %将格点上的静磁场分配给每个粒子
             B_e(p,3)=1e-4*(2595.7+32.4092*(1000*pos_e(p))-3.1038*(1000*pos_e(p))^2-...   %插值得到粒子位置处的磁感应强度
                 0.0130847*(1000*pos_e(p))^3+0.00198809*(1000*pos_e(p))^4-2.48996e-5*(1000*pos_e(p))^5+8.9815e-8*(1000*pos_e(p))^6);
-            if fi<=1.5                                           %四个if用来确定粒子位置，从而为之分配磁感应强度
+            if fi<=1.5                                           %四个if用来确定粒子位置，从而为之分配微波产生的磁感应强度
                 B_e(p,:)=B_e(p,:)+2*hz*B_mic_ave(1,:)+(1-2*hz)*[B_mic_xin,B_mic_yin,0];
             end
             if fi>=nz-0.5
@@ -320,12 +489,16 @@ for ts_i=1:step_num                                                             
             vel_e(p,:)=UpdateVelocity(E_e(p,:),B_e(p,:),vel_e(p,:),dt_e); %更新速度
             pos_e(p,1)=pos_e(p,1)+vel_e(p,3)*dt_e;                          %更新位置
             
-            %设置周期性边界条件
-            if pos_e(p,1)<0
-                pos_e(p,1)=pos_e(p,1)+z_max;
+            %设置吸收边界条件，电子与壁相互作用后消亡掉
+            if pos_e(p,1)<=0             %左边界
+                pos_e(p,1)=pos_e(N_e,1); %将最后一个电子的位置替换到消亡位置处
+                vel_e(p,:)=vel_e(N_e,:); %将最后一个电子的速度替换到消亡位置处
+                N_e=N_e-1;               %电子数减少一个
             end
-            if pos_e(p,1)>z_max
-                pos_e(p,1)=pos_e(p,1)-z_max;
+            if pos_e(p,1)>z_max          %右边界
+                pos_e(p,1)=pos_e(N_e,1); %将最后一个电子的位置替换到消亡位置处
+                vel_e(p,:)=vel_e(N_e,:); %将最后一个电子的速度替换到消亡位置处
+                N_e=N_e-1;               %电子数减少一个
             end
             
             p=p+1;
@@ -335,6 +508,7 @@ for ts_i=1:step_num                                                             
         % plot(1:nz,E_mic(:,1));
         % pause(0.1);
     end
+    
 end
 
 filename=strcat(datestr(clock,'yy-mm-dd-HH-MM-SS'),'E_mic.txt');
