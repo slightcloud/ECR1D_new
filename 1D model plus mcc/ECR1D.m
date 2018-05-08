@@ -2,7 +2,7 @@
 clear variables
 clc
 
-global q_e m_e
+global q_e m_e EPS0
 
 %定义基本参量
 q_e=1.602e-19;              %电子电量，单位：C
@@ -28,18 +28,19 @@ nz=round(L_real/dz)+1;                   %格点数
 z_max=dz*(nz-1);                         %模拟区域z方向的最大值
 spwt=1e8;                                %每个宏粒子包含的真实粒子数
 vth_e=sqrt(2*q_e*0.5/m_e);               %电子的热速度，假设电子的热能为0.5 eV，单位：m/s
-N_e=30000;                                %初始电子数目为N_e
+N_e=100000;                                %初始电子数目为N_e
 N_Li1=0;                                 %Li+的数目
 N_Li2=0;                                 %Li2+的数目
 N_Li3=0;                                 %Li3+的数目
 N_Li_ex=0;                               %激发态Li原子的数目
-tol=0.01;                               %电势求解的精度值
-max_part=100000;                           %粒子容器的最大值
+tol=1e-6;                               %电势求解的精度值
+sor=1.4;                                 %超松驰迭代的因子
+max_part=1000000;                           %粒子容器的最大值
 %B_ex_z=0.0875;                          %外部永磁铁产生的磁感应强度，单位：T
-E0=1.5e5;                                %微波电场强度的幅值，单位：V/m（不确定）
+E0=1.5e8;                                %微波电场强度的幅值，单位：V/m（不确定）
 B0=0.0001;                               %微波磁感应强度的幅值，单位:T（不确定）
 w=2.45;                                  %微波的频率,单位:GHz
-step_num=25000;                          %总共运行的时间步数
+step_num=1000;                          %总共运行的时间步数
 N_phi=5e5;                               %电势求解的迭代步数
 R_i_max=7.8034e-7;                       %各个价态总电离率的最大值
 E_i_Li1=5.4;                             %Li0->Li1的电离能，单位：eV
@@ -70,13 +71,13 @@ J=zeros(nz,3);                 %每个格点上的电流密度
 pos_e=zeros(max_part,1);         %电子的位置信息
 vel_e=zeros(max_part,3);         %电子的速度信息
 pos_Li1=zeros(max_part,1);    %Li+的位置信息
-vel_Li1=zeros(max_part,1);    %Li+的速度信息
+vel_Li1=zeros(max_part,3);    %Li+的速度信息
 pos_Li2=zeros(max_part,1);    %Li2+的位置信息
-vel_Li2=zeros(max_part,1);    %Li2+的速度信息
+vel_Li2=zeros(max_part,3);    %Li2+的速度信息
 pos_Li3=zeros(max_part,1);    %Li3+的位置信息
-vel_Li3=zeros(max_part,1);    %Li3+的速度信息
+vel_Li3=zeros(max_part,3);    %Li3+的速度信息
 pos_Li_ex=zeros(max_part,1);    %激发态的Li原子的位置信息
-vel_Li_ex=zeros(max_part,1);    %激发态的Li原子的速度信息
+vel_Li_ex=zeros(max_part,3);    %激发态的Li原子的速度信息
 
 
 
@@ -197,7 +198,7 @@ for ts_i=1:step_num                 %运行的时间步数
         
         %首先进行MCC过程
         den_Li=count_Li/(100*dz);       %每个单元格内Li+，Li2+和Li3+的数密度，单位：cm-1
-        nu_t=spwt*(n0+den_Li(:,1)+den_Li(:,2))*R_i_max; %每个单元格内总的电子碰撞频率，考虑要不要给锂离子乘以spwt???
+        nu_t=(n0+den_Li(:,1)+den_Li(:,2))*R_i_max; %每个单元格内总的电子碰撞频率，考虑要不要给锂离子乘以spwt???
         P_emax=1-exp(-nu_t*dt_e);                    %每个单元格内任意一个电子的最大碰撞概率
         count_e=zeros(nz-1,1);                     %用来对每个单元格内的电子进行计数
         distri_e=zeros(N_e,nz-1);                   %用来盛放每个单元格内的电子序数
@@ -230,12 +231,12 @@ for ts_i=1:step_num                 %运行的时间步数
                 if R<=nu_Li1(j,i)&&Ek_e(j,i)>=E_i_Li1                                        %Li0->Li+事件发生
                     N_Li1=N_Li1+1;                                                           %产生了一个新的Li+
                     N_e=N_e+1;                                                               %产生了一个新的电子
-                    pos_Li1(N_Li1)=pos(distri_e(N_e_sam(j),i));                              %新产生的Li+的位置与入射电子的相同
+                    pos_Li1(N_Li1)=pos_e(distri_e(N_e_sam(j,i),i));                              %新产生的Li+的位置与入射电子的相同
                     vel_Li1(N_Li1,:)=randraw('maxwell',k*T/m_Li,1)*random_unit_vector(3,1)'; %新产生的Li+的速度服从麦克斯韦分布
                     pos_e(N_e)=pos_Li1(N_Li1);                                               %新产生的电子和新产生的Li+在相同的位置
-                    vel_e_temp=0.5*sqrt(2*(Ek_e(j,i)-E_i_Li1)/m_e)*random_unit_vector(3,2);  %认为电子对离子的能量没有贡献，电子动能减去电离能后平分给散射电子和新产生的电子，random_unit_vector函数用来产生各向同性的电子
+                    vel_e_temp=0.5*sqrt(2*q_e*(Ek_e(j,i)-E_i_Li1)/m_e)*random_unit_vector(3,2);  %认为电子对离子的能量没有贡献，电子动能减去电离能后平分给散射电子和新产生的电子，random_unit_vector函数用来产生各向同性的电子
                     vel_e(N_e,:)=vel_e_temp(:,1)';                                           %新生成的电子的速度
-                    vel_e(distri_e(N_e_sam(j),i),:)=vel_e_temp(:,2)';                        %散射电子的速度
+                    vel_e(distri_e(N_e_sam(j,i),i),:)=vel_e_temp(:,2)';                        %散射电子的速度
                 end
                 if R>nu_Li1(j,i)&&R<=nu_Li1_Li2(j,i)&&Ek_e(j,i)>=E_i_Li2                         %Li+->Li2+事件发生
                     N_Li2=N_Li2+1;                                                          %产生了一个新的Li2+
@@ -245,9 +246,9 @@ for ts_i=1:step_num                 %运行的时间步数
                     pos_Li2(N_Li2)=pos_Li1(O_Li1);                                          %新产生的Li2+的位置与消亡的Li+的位置相同
                     vel_Li2(N_Li2,:)=vel_Li1(O_Li1,:);                                      %新产生的Li2+的速度与消亡掉的Li+的速度相同
                     pos_e(N_e)=pos_Li2(N_Li2);                                              %新产生的电子的位置和Li2+产生的位置相同
-                    vel_e_temp=0.5*sqrt(2*(Ek_e(j,i)-E_i_Li2)/m_e)*random_unit_vector(3,2); %认为电子对离子的能量没有贡献，电子动能减去电离能后平分给散射电子和新产生的电子，random_unit_vector函数用来产生各向同性的电子
+                    vel_e_temp=0.5*sqrt(2*q_e*(Ek_e(j,i)-E_i_Li2)/m_e)*random_unit_vector(3,2); %认为电子对离子的能量没有贡献，电子动能减去电离能后平分给散射电子和新产生的电子，random_unit_vector函数用来产生各向同性的电子
                     vel_e(N_e,:)=vel_e_temp(:,1)';                                          %新生成的电子的速度
-                    vel_e(distri_e(N_e_sam(j),i),:)=vel_e_temp(:,2)';                       %散射电子的速度
+                    vel_e(distri_e(N_e_sam(j,i),i),:)=vel_e_temp(:,2)';                       %散射电子的速度
                 end
                 if R>nu_Li1_Li2(j,i)&&R<=nu_Li1_Li2_Li3(j,i)&&Ek_e(j,i)>=E_i_Li3                 %Li2+->Li3+事件发生
                     N_Li3=N_Li3+1;                                                          %产生了一个新的Li3+
@@ -257,9 +258,9 @@ for ts_i=1:step_num                 %运行的时间步数
                     pos_Li3(N_Li3)=pos_Li2(O_Li2);                                          %新产生的Li3+的位置与消亡的Li2+的位置相同
                     vel_Li3(N_Li3,:)=vel_Li2(O_Li2,:);                                      %新产生的Li3+的速度与消亡掉的Li2+的速度相同
                     pos_e(N_e)=pos_Li3(N_Li3);                                              %新产生的电子的位置和Li3+产生的位置相同
-                    vel_e_temp=0.5*sqrt(2*(Ek_e(j,i)-E_i_Li3)/m_e)*random_unit_vector(3,2); %认为电子对离子的能量没有贡献，电子动能减去电离能后平分给散射电子和新产生的电子，random_unit_vector函数用来产生各向同性的电子
+                    vel_e_temp=0.5*sqrt(2*q_e*(Ek_e(j,i)-E_i_Li3)/m_e)*random_unit_vector(3,2); %认为电子对离子的能量没有贡献，电子动能减去电离能后平分给散射电子和新产生的电子，random_unit_vector函数用来产生各向同性的电子
                     vel_e(N_e,:)=vel_e_temp(:,1)';                                          %新生成的电子的速度
-                    vel_e(distri_e(N_e_sam(j),i),:)=vel_e_temp(:,2)';                       %散射电子的速度
+                    vel_e(distri_e(N_e_sam(j,i),i),:)=vel_e_temp(:,2)';                       %散射电子的速度
                 end
             end
         end
@@ -396,29 +397,70 @@ for ts_i=1:step_num                 %运行的时间步数
         
         %开始求解泊松方程，得到格点上的电势，所用方法为高斯-赛德尔迭代法（G-S）
         % phi_tem=phi;
-        for j=1:N_phi     %迭代步数
-            
-            for i=2:nz-1  %中间格点的电势
-                phi_tem(i)=0.5*(den(i)/EPS0*dz*dz+phi(i-1)+phi(i+1));   %根据有限差分方法得到
-            end
-            
-            phi_tem(1)=phi(2);     %入口处为第一类边界条件
-            phi_tem(nz)=phi(nz-1); %出口处也为第一类边界条件
-            
-            if mod(j,10)==0
-                R=norm(phi_tem-phi); %求出本次迭代的残差
-                if (R<=tol)          %收敛条件
-                    phi=phi_tem;
-                    fprintf('Congratulations! The solver of the electric potential is converged at %d step\n',j);
-                    break;
-                end
-            end
-            phi=phi_tem;
-        end
-        if j>=N_phi                  %如果电势求解不收敛，则终止程序的运行
-            fprintf('The result of the electric potential is not convergent, the program is stopped!\n');
-            break;
-        end
+        
+        
+        %         phi=G_S_SOR(phi,den,tol,sor,N_phi,dz,nz);
+        
+        
+        
+        %         for j=1:N_phi     %迭代步数
+        %
+        %
+        %             for i=2:nz-1  %中间格点的电势
+        %                 phi_tem(i)=0.5*(den(i)/EPS0*dz*dz+phi(i-1)+phi(i+1));   %根据有限差分方法得到
+        %             end
+        %
+        %             phi_tem(1)=phi(2);     %入口处为第一类边界条件
+        %             phi_tem(nz)=phi(nz-1); %出口处也为第一类边界条件
+        %
+        %             if mod(j,10)==0
+        %                 R=norm(phi_tem-phi); %求出本次迭代的残差
+        %                 if (R<=tol)          %收敛条件
+        %                     phi=phi_tem;
+        %                     fprintf('Congratulations! The solver of the electric potential is converged at %d step\n',j);
+        %                     break;
+        %                 end
+        %             end
+        %             phi=phi_tem;
+        %         end
+        %         if j>=N_phi                  %如果电势求解不收敛，则终止程序的运行
+        %             fprintf('The result of the electric potential is not convergent, the program is stopped!\n');
+        %             break;
+        %         end
+        %
+        %
+        
+        
+        
+        A=blktridiag(2,-1,-1,nz);
+        B=full(A);
+        B(1,:)=0*B(1,:);
+        B(1,1)=1;
+        B(nz,:)=0*B(nz,:);
+        B(nz,nz)=1;
+        den(1)=0;
+        den(nz)=0;
+        den=den/EPS0*(dz)^2;
+        % [phi,k]=G_S(B,den,phi,1e-3,2000);
+        K=B;
+        %F=b;
+        F=den;
+        W=zeros(size(B,1),1);
+        level=3;
+        node_order=[-1 1 1];
+        relax_it=2;
+        relax_para=1;
+        post_smoothing=1;
+        max_iter=20000;
+        % tol=1e-06;
+        pc_type=2;
+        connection_threshold=0.25;
+        [phi,error,iter,flag]=AMG(K,F, W, level,  relax_it, relax_para, ...
+            post_smoothing, max_iter, tol,  pc_type, connection_threshold);
+        
+        
+        
+        
         
         %求解每个格点上的静电场，由于是一维，因此只能得到z方向的电场强度
         E_sta(2:nz-1)=(phi(1:nz-2)-phi(3:nz))/2/dz;      %中间格点的静电场
@@ -426,14 +468,14 @@ for ts_i=1:step_num                 %运行的时间步数
         E_sta(nz)=(phi(nz-1)-phi(nz))/dz;                %出口处静电场
         
         %计算微波电磁场的各个分量
-        E_mic_xold=E0*cos(w*1e9*2*pi()*(ts_i-2)*dt_e);
-        E_mic_yold=E0*sin(w*1e9*2*pi()*(ts_i-2)*dt_e);
-        E_mic(1,1)=E0*cos(w*1e9*2*pi()*(ts_i-1)*dt_e);              %入口处x方向的电场强度E_x=E0cos(wt)
+        E_mic_xold=E0*cos(w*1e9*2*pi()*(ts_e-2)*dt_e);
+        E_mic_yold=E0*sin(w*1e9*2*pi()*(ts_e-2)*dt_e);
+        E_mic(1,1)=E0*cos(w*1e9*2*pi()*(ts_e-1)*dt_e);              %入口处x方向的电场强度E_x=E0cos(wt)
         % B_mic_xin_full=B0*sin(w*1e9*2*pi()*(ts-0.5)*dt);       %入口处x方向磁感应强度，时间为整
-        B_mic_xin=B0*sin(w*1e9*2*pi()*(ts_i-0.5)*dt_e);             %入口处x方向的磁感应强度为B_x=B0sin(wt)，且时间上向后移动Δt/2
-        E_mic(1,2)=E0*sin(w*1e9*2*pi()*(ts_i-1)*dt_e);              %入口处y方向的电场强度E_y=E0sin(wt)
+        B_mic_xin=B0*sin(w*1e9*2*pi()*(ts_e-0.5)*dt_e);             %入口处x方向的磁感应强度为B_x=B0sin(wt)，且时间上向后移动Δt/2
+        E_mic(1,2)=E0*sin(w*1e9*2*pi()*(ts_e-1)*dt_e);              %入口处y方向的电场强度E_y=E0sin(wt)
         %B_mic_yin_full=B0*cos(w*1e9*2*pi()*(ts-0.5)*dt);       %入口处y方向磁感应强度，时间为整
-        B_mic_yin=B0*cos(w*1e9*2*pi()*(ts_i-0.5)*dt_e);             %入口处y方向的磁感应强度B_y=B0cos(wt)，且时间上向后移动Δt/2
+        B_mic_yin=B0*cos(w*1e9*2*pi()*(ts_e-0.5)*dt_e);             %入口处y方向的磁感应强度B_y=B0cos(wt)，且时间上向后移动Δt/2
         %B_mic(1,1)=B_mic_xin+dt/(2*dz)*(E_mic(2,2)-E_mic(1,2));                   %将Bx在空间和时间上都向后移动Δz/2和Δt/2
         B_mic(1,1)=B_mic_xin+dz/2*(1/(c^2)*(E_mic(1,2)-E_mic_yold)/dt_e+MU0*J(1,2)); %入口处的Bx，将Bx在空间上向后移动Δz/2，向后差分
         B_mic(1,2)=B_mic_yin-dz/2*(1/(c^2)*(E_mic(1,1)-E_mic_xold)/dt_e+MU0*J(1,1)); %入口处的By，将By在空间上向后移动Δz/2，向后差分
@@ -456,11 +498,11 @@ for ts_i=1:step_num                 %运行的时间步数
         E_mic(2:nz-1,2)=E_mic(2:nz-1,2)+c^2*dt_e*(-1*MU0*J(2:nz-1,2)+(B_mic(2:nz-1,1)-B_mic(1:nz-2,1))/dz); %Ey
         %E_mic(1:nz,3)=E_mic(1:nz,3)-c^2*MU0*dt*J(1:nz,3); %Ez
         
-        E_boun(ts_i,:)=E_mic(nz-1,:);
-        B_boun(ts_i,:)=B_mic(nz-1,:);
-        if ts_i>2
-            E_mic(nz,:)=E_boun(ts_i-2,:);
-            B_mic(nz,:)=B_boun(ts_i-2,:);
+        E_boun(ts_e,:)=E_mic(nz-1,:);
+        B_boun(ts_e,:)=B_mic(nz-1,:);
+        if ts_e>2
+            E_mic(nz,:)=E_boun(ts_e-2,:);
+            B_mic(nz,:)=B_boun(ts_e-2,:);
         end
         
         %将格点上的静电场和电磁场全部分配到每个电子上，另外还要加上外部永磁体产生的磁场
@@ -510,7 +552,7 @@ for ts_i=1:step_num                 %运行的时间步数
             p=p+1;
         end
         
-        fprintf('ts: %d\n', ts_i);
+        fprintf('ts_e: %d, ts_i: %d,N_Li1: %d, N_Li2: %d, N_Li3: %d, P_emax: %f\n Average Energy: %f eV\n', ts_e,ts_i,N_Li1,N_Li2,N_Li3,max(P_emax),mean(Ek_e(1,:)));
         % plot(1:nz,E_mic(:,1));
         % pause(0.1);
     end
