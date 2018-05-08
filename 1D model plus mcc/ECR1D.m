@@ -2,7 +2,7 @@
 clear variables
 clc
 
-global q_e m_e EPS0
+global q_e m_e EPS0 c
 
 %定义基本参量
 q_e=1.602e-19;              %电子电量，单位：C
@@ -46,6 +46,9 @@ R_i_max=7.8034e-7;                       %各个价态总电离率的最大值
 E_i_Li1=5.4;                             %Li0->Li1的电离能，单位：eV
 E_i_Li2=75.77;                           %Li1->Li2的电离能，单位：eV
 E_i_Li3=122.664;                         %Li2->Li3的电离能，单位：eV
+load sigma_Li0_Li1.txt;                  %读取Li0->Li+的截面数据
+load sigma_Li1_Li2.txt;                  %读取Li+->Li2+的截面数据
+load sigma_Li2_Li3.txt;                  %读取Li2+->Li3+的截面数据
 z=zeros(nz,1);                           %用于盛放每个格点的坐标
 z(2:nz,1)=(1:nz-1)'*dz*1000;                  %每个格点的坐标值，单位：mm
 B_ex_z=0.0001*(2595.7+32.4092*z-3.1038*z.^2-0.0130847*z.^3+0.00198809*z.^4-2.48996e-5*z.^5+8.9815e-8*z.^6);   %根据实验上测得的磁感应强度值进行拟合，单位：T
@@ -198,7 +201,8 @@ for ts_i=1:step_num                 %运行的时间步数
         
         %首先进行MCC过程
         den_Li=count_Li/(100*dz);       %每个单元格内Li+，Li2+和Li3+的数密度，单位：cm-1
-        nu_t=(n0+den_Li(:,1)+den_Li(:,2))*R_i_max; %每个单元格内总的电子碰撞频率，考虑要不要给锂离子乘以spwt???
+%         nu_t=(n0+den_Li(:,1)+den_Li(:,2))*R_i_max; %每个单元格内总的电子碰撞频率，考虑要不要给锂离子乘以spwt???
+        nu_t=NULL_COLLISION(n0,den_Li(:,1),den_Li(:,2)); %每个单元格内总的电子碰撞频率
         P_emax=1-exp(-nu_t*dt_e);                    %每个单元格内任意一个电子的最大碰撞概率
         count_e=zeros(nz-1,1);                     %用来对每个单元格内的电子进行计数
         distri_e=zeros(N_e,nz-1);                   %用来盛放每个单元格内的电子序数
