@@ -16,8 +16,8 @@ ve = 100*sqrt(c^2*(1-(1+Te*q_e/(m_e*c^2)).^(-2)));  %¸ù¾ÝÏà¶ÔÂÛÔË¶¯Ñ§£¬½«µç×ÓµÄ¶
 sigma = zeros(size(Te,1),3); %¸Ã¾ØÕóÓÃÀ´Ê¢·ÅÈý¸öµçÀë·´Ó¦µÄ½ØÃæ£¬Ã¿Ò»ÁÐÊÇÒ»¸ö·´Ó¦
 nu = zeros(size(Te,1),3);    %¸Ã¾ØÕóÓÃÀ´Ê¢·Å
 for i = 1:3
-    eval(['A = sigma_Li',num2str(i-1),'_Li',num2str(i),'(:,1)']);   %AÎªÍâ²¿ÎÄ¼þÖÐÌáÈ¡³öµÄµç×ÓÃÜ¶È
-    eval(['B = sigma_Li',num2str(i-1),'_Li',num2str(i),'(:,2)']);   %BÎªÍâ²¿ÎÄ¼þÖÐÌáÈ¡³öµÄ·´Ó¦½ØÃæ
+    eval(['A = sigma_Li',num2str(i-1),'_Li',num2str(i),'(:,1);']);   %AÎªÍâ²¿ÎÄ¼þÖÐÌáÈ¡³öµÄµç×ÓÃÜ¶È
+    eval(['B = sigma_Li',num2str(i-1),'_Li',num2str(i),'(:,2);']);   %BÎªÍâ²¿ÎÄ¼þÖÐÌáÈ¡³öµÄ·´Ó¦½ØÃæ
     sigma(:,i)=interp1(A,B,Te,'pichip');                            %Í¨¹ý²åÖµµÄ·½·¨µÃµ½Ã¿¸öµç×ÓÎÂ¶È¶ÔÓ¦µÄ·´Ó¦½ØÃæ£¬µ¥Î»£ºcm^2
     if i == 2                                                       %½«Ð¡ÓÚLi+->Li2+·´Ó¦ãÐÄÜµÄ½ØÃæÉèÖÃÎª0
         for j = 1:size(Te,1)

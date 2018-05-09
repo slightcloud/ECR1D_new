@@ -200,10 +200,10 @@ for ts_i=1:step_num                 %运行的时间步数
         end
         
         %首先进行MCC过程
-        den_Li=count_Li/(100*dz);       %每个单元格内Li+，Li2+和Li3+的数密度，单位：cm-1
+        den_Li=spwt*count_Li/(100*dz);       %每个单元格内Li+，Li2+和Li3+的数密度，单位：cm-1
 %         nu_t=(n0+den_Li(:,1)+den_Li(:,2))*R_i_max; %每个单元格内总的电子碰撞频率，考虑要不要给锂离子乘以spwt???
         nu_t=NULL_COLLISION(n0,den_Li(:,1),den_Li(:,2)); %每个单元格内总的电子碰撞频率
-        P_emax=1-exp(-nu_t*dt_e);                    %每个单元格内任意一个电子的最大碰撞概率
+        P_emax=10*(1-exp(-nu_t*dt_e));                    %每个单元格内任意一个电子的最大碰撞概率
         count_e=zeros(nz-1,1);                     %用来对每个单元格内的电子进行计数
         distri_e=zeros(N_e,nz-1);                   %用来盛放每个单元格内的电子序数
         for p=1:N_e
@@ -221,28 +221,34 @@ for ts_i=1:step_num                 %运行的时间步数
         for i=1:nz-1            %开始对每个单元格进行蒙特卡洛抽样
             N_e_sam(1:ceil(N_e_mcc(i)),i)=(randperm(count_e(i),ceil(N_e_mcc(i))))';  %randperm(n,k)函数用于从n个数中随机抽取不相同的k个数
             for j=1:N_e_mcc(i)
-                Ek_e(j,i)=0.5*m_e*sum((vel_e(distri_e(N_e_sam(j,i),i),:)).^2)/q_e;  %算出每个抽取出来的电子的动能，并转换为eV单位
-                nu_Li1(j,i)=n0*10^(B_ir(1,:)*[1;log10(Ek_e(j,i));(log10(Ek_e(j,i)))^2;(log10(Ek_e(j,i)))^3;(log10(Ek_e(j,i)))^4;(log10(Ek_e(j,i)))^5])/nu_t(i); %根据数据库中的数据拟合曲线求出抽样电子对应的产生Li+的碰撞频率
-                nu_Li2(j,i)=den_Li(i,1)*10^(B_ir(2,:)*[1;log10(Ek_e(j,i));(log10(Ek_e(j,i)))^2;(log10(Ek_e(j,i)))^3;(log10(Ek_e(j,i)))^4;(log10(Ek_e(j,i)))^5])/nu_t(i); %产生Li2+的碰撞频率
-                nu_Li3(j,i)=den_Li(i,2)*10^(B_ir(3,:)*[1;log10(Ek_e(j,i));(log10(Ek_e(j,i)))^2;(log10(Ek_e(j,i)))^3;(log10(Ek_e(j,i)))^4;(log10(Ek_e(j,i)))^5])/nu_t(i); %产生Li3+的碰撞频率
+                %                 Ek_e(j,i)=0.5*m_e*sum((vel_e(distri_e(N_e_sam(j,i),i),:)).^2)/q_e;  %算出每个抽取出来的电子的动能，并转换为eV单位
+                ve=sqrt(sum((vel_e(distri_e(N_e_sam(j,i),i),:)).^2));    %电子速度的模
+                Ek_e(j,i)=m_e*c^2*(1/sqrt(1-ve^2/c^2)-1)/q_e;      %算出每个抽取出来的电子的动能，并转换为eV单位
+                %                 nu_Li1(j,i)=n0*10^(B_ir(1,:)*[1;log10(Ek_e(j,i));(log10(Ek_e(j,i)))^2;(log10(Ek_e(j,i)))^3;(log10(Ek_e(j,i)))^4;(log10(Ek_e(j,i)))^5])/nu_t(i); %根据数据库中的数据拟合曲线求出抽样电子对应的产生Li+的碰撞频率
+                %                 nu_Li2(j,i)=den_Li(i,1)*10^(B_ir(2,:)*[1;log10(Ek_e(j,i));(log10(Ek_e(j,i)))^2;(log10(Ek_e(j,i)))^3;(log10(Ek_e(j,i)))^4;(log10(Ek_e(j,i)))^5])/nu_t(i); %产生Li2+的碰撞频率
+                %                 nu_Li3(j,i)=den_Li(i,2)*10^(B_ir(3,:)*[1;log10(Ek_e(j,i));(log10(Ek_e(j,i)))^2;(log10(Ek_e(j,i)))^3;(log10(Ek_e(j,i)))^4;(log10(Ek_e(j,i)))^5])/nu_t(i); %产生Li3+的碰撞频率
+                nu_Li1(j,i)=n0*interp1(sigma_Li0_Li1(:,1),sigma_Li0_Li1(:,2),Ek_e(j,i),'pichip')*ve*100;            %根据已知截面数据点，插值得到抽样电子对应的电离截面，进而计算出反应频率，下面两个相同
+                nu_Li2(j,i)=den_Li(i,1)*interp1(sigma_Li1_Li2(:,1),sigma_Li1_Li2(:,2),Ek_e(j,i),'pichip')*ve*100;
+                nu_Li3(j,i)=den_Li(i,2)*interp1(sigma_Li2_Li3(:,1),sigma_Li2_Li3(:,2),Ek_e(j,i),'pichip')*ve*100;
             end
         end
         nu_Li1_Li2=nu_Li1+nu_Li2;             %构造数列的第二项，第一项是nu_Li1
         nu_Li1_Li2_Li3=nu_Li1+nu_Li2+nu_Li3;  %构造数列的第三项
         for i=1:nz-1               %遍历每个单元格
             for j=1:N_e_mcc(i)     %遍历每个单元格内抽出的电子
-                R=rand();          %R为（0，1）之间的随机数
-                if R<=nu_Li1(j,i)&&Ek_e(j,i)>=E_i_Li1                                        %Li0->Li+事件发生
+                R=nu_t(i,1)*rand();          %R为（0，nu_max）之间的随机数
+                if R<=nu_Li1(j,i)&&Ek_e(j,i)>=5.4                                        %Li0->Li+事件发生
                     N_Li1=N_Li1+1;                                                           %产生了一个新的Li+
                     N_e=N_e+1;                                                               %产生了一个新的电子
                     pos_Li1(N_Li1)=pos_e(distri_e(N_e_sam(j,i),i));                              %新产生的Li+的位置与入射电子的相同
                     vel_Li1(N_Li1,:)=randraw('maxwell',k*T/m_Li,1)*random_unit_vector(3,1)'; %新产生的Li+的速度服从麦克斯韦分布
                     pos_e(N_e)=pos_Li1(N_Li1);                                               %新产生的电子和新产生的Li+在相同的位置
-                    vel_e_temp=0.5*sqrt(2*q_e*(Ek_e(j,i)-E_i_Li1)/m_e)*random_unit_vector(3,2);  %认为电子对离子的能量没有贡献，电子动能减去电离能后平分给散射电子和新产生的电子，random_unit_vector函数用来产生各向同性的电子
+%                     vel_e_temp=0.5*sqrt(2*q_e*(Ek_e(j,i)-E_i_Li1)/m_e)*random_unit_vector(3,2);  %认为电子对离子的能量没有贡献，电子动能减去电离能后平分给散射电子和新产生的电子，random_unit_vector函数用来产生各向同性的电子
+                    vel_e_temp=sqrt(c^2*(1-(1+0.5*(Ek_e(j,i)-E_i_Li1)*q_e/(m_e*c^2)).^(-2)))*random_unit_vector(3,2); %认为电子对离子的能量没有贡献，电子动能减去电离能后平分给散射电子和新产生的电子，random_unit_vector函数用来产生各向同性的电子
                     vel_e(N_e,:)=vel_e_temp(:,1)';                                           %新生成的电子的速度
                     vel_e(distri_e(N_e_sam(j,i),i),:)=vel_e_temp(:,2)';                        %散射电子的速度
                 end
-                if R>nu_Li1(j,i)&&R<=nu_Li1_Li2(j,i)&&Ek_e(j,i)>=E_i_Li2                         %Li+->Li2+事件发生
+                if R>nu_Li1(j,i)&&R<=nu_Li1_Li2(j,i)&&Ek_e(j,i)>=75.77                        %Li+->Li2+事件发生
                     N_Li2=N_Li2+1;                                                          %产生了一个新的Li2+
                     N_e=N_e+1;                                                              %产生了一个新的电子
                     O_Li1=distri_Li1(randperm(count_Li(i,1),1),i);                          %消亡的Li+对应的序号，随机在第i个单元格中选择
@@ -250,11 +256,12 @@ for ts_i=1:step_num                 %运行的时间步数
                     pos_Li2(N_Li2)=pos_Li1(O_Li1);                                          %新产生的Li2+的位置与消亡的Li+的位置相同
                     vel_Li2(N_Li2,:)=vel_Li1(O_Li1,:);                                      %新产生的Li2+的速度与消亡掉的Li+的速度相同
                     pos_e(N_e)=pos_Li2(N_Li2);                                              %新产生的电子的位置和Li2+产生的位置相同
-                    vel_e_temp=0.5*sqrt(2*q_e*(Ek_e(j,i)-E_i_Li2)/m_e)*random_unit_vector(3,2); %认为电子对离子的能量没有贡献，电子动能减去电离能后平分给散射电子和新产生的电子，random_unit_vector函数用来产生各向同性的电子
+%                     vel_e_temp=0.5*sqrt(2*q_e*(Ek_e(j,i)-E_i_Li2)/m_e)*random_unit_vector(3,2); %认为电子对离子的能量没有贡献，电子动能减去电离能后平分给散射电子和新产生的电子，random_unit_vector函数用来产生各向同性的电子
+                    vel_e_temp=sqrt(c^2*(1-(1+0.5*(Ek_e(j,i)-E_i_Li2)*q_e/(m_e*c^2)).^(-2)))*random_unit_vector(3,2);
                     vel_e(N_e,:)=vel_e_temp(:,1)';                                          %新生成的电子的速度
                     vel_e(distri_e(N_e_sam(j,i),i),:)=vel_e_temp(:,2)';                       %散射电子的速度
                 end
-                if R>nu_Li1_Li2(j,i)&&R<=nu_Li1_Li2_Li3(j,i)&&Ek_e(j,i)>=E_i_Li3                 %Li2+->Li3+事件发生
+                if R>nu_Li1_Li2(j,i)&&R<=nu_Li1_Li2_Li3(j,i)&&Ek_e(j,i)>=122.664                 %Li2+->Li3+事件发生
                     N_Li3=N_Li3+1;                                                          %产生了一个新的Li3+
                     N_e=N_e+1;                                                              %产生了一个新的电子
                     O_Li2=distri_Li2(randperm(count_Li(i,2),1),i);                          %消亡的Li2+对应的序号，随机在第i个单元格中选择
@@ -262,7 +269,8 @@ for ts_i=1:step_num                 %运行的时间步数
                     pos_Li3(N_Li3)=pos_Li2(O_Li2);                                          %新产生的Li3+的位置与消亡的Li2+的位置相同
                     vel_Li3(N_Li3,:)=vel_Li2(O_Li2,:);                                      %新产生的Li3+的速度与消亡掉的Li2+的速度相同
                     pos_e(N_e)=pos_Li3(N_Li3);                                              %新产生的电子的位置和Li3+产生的位置相同
-                    vel_e_temp=0.5*sqrt(2*q_e*(Ek_e(j,i)-E_i_Li3)/m_e)*random_unit_vector(3,2); %认为电子对离子的能量没有贡献，电子动能减去电离能后平分给散射电子和新产生的电子，random_unit_vector函数用来产生各向同性的电子
+%                     vel_e_temp=0.5*sqrt(2*q_e*(Ek_e(j,i)-E_i_Li3)/m_e)*random_unit_vector(3,2); %认为电子对离子的能量没有贡献，电子动能减去电离能后平分给散射电子和新产生的电子，random_unit_vector函数用来产生各向同性的电子
+                    vel_e_temp=sqrt(c^2*(1-(1+0.5*(Ek_e(j,i)-E_i_Li3)*q_e/(m_e*c^2)).^(-2)))*random_unit_vector(3,2);
                     vel_e(N_e,:)=vel_e_temp(:,1)';                                          %新生成的电子的速度
                     vel_e(distri_e(N_e_sam(j,i),i),:)=vel_e_temp(:,2)';                       %散射电子的速度
                 end
