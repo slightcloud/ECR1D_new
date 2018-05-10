@@ -37,7 +37,7 @@ tol=1e-6;                               %电势求解的精度值
 sor=1.4;                                 %超松驰迭代的因子
 max_part=1000000;                           %粒子容器的最大值
 %B_ex_z=0.0875;                          %外部永磁铁产生的磁感应强度，单位：T
-E0=1.5e8;                                %微波电场强度的幅值，单位：V/m（不确定）
+E0=1.5e6;                                %微波电场强度的幅值，单位：V/m（不确定）
 B0=0.0001;                               %微波磁感应强度的幅值，单位:T（不确定）
 w=2.45;                                  %微波的频率,单位:GHz
 step_num=1000;                          %总共运行的时间步数
@@ -92,7 +92,7 @@ pos_e(1:N_e)=rand(N_e,1)*z_max;                                                 
 
 %vel(1:N_e,:)=1e8;
 vel_e(1:N_e,:)=vth_e*2*(rand(N_e,3)+rand(N_e,3)+rand(N_e,3)-1.5);                 %设置初始电子的速度在热速度的-3倍到3倍之间
-vel_e(1:N_e,:)=UpdateVelocity(E_e(1:N_e,:),B_e(1:N_e,:),vel_e(1:N_e,:),-0.5*dt_e);    %将电子的速度向前移动半个时间步长
+vel_e(1:N_e,:)=Relativistic_Boris(m_e,-q_e,E_e(1:N_e,:),B_e(1:N_e,:),vel_e(1:N_e,:),-0.5*dt_e);    %将电子的速度向前移动半个时间步长
 
 %开始主循环，即对时间的循环
 for ts_i=1:step_num                 %运行的时间步数
@@ -546,7 +546,7 @@ for ts_i=1:step_num                 %运行的时间步数
             end
             
             %利用BORIS方法求出下一时刻的速度和位置
-            vel_e(p,:)=UpdateVelocity(E_e(p,:),B_e(p,:),vel_e(p,:),dt_e); %更新速度
+            vel_e(p,:)=Relativistic_Boris(m_e,-q_e,E_e(p,:),B_e(p,:),vel_e(p,:),dt_e); %更新速度
             pos_e(p,1)=pos_e(p,1)+vel_e(p,3)*dt_e;                          %更新位置
             
             %设置吸收边界条件，电子与壁相互作用后消亡掉
@@ -616,7 +616,7 @@ for ts_i=1:step_num                 %运行的时间步数
         end
         
         %利用BORIS方法求出下一时刻的速度和位置
-        vel_Li1(p,:)=UpdateVelocity(E_Li1(p,:),B_Li1(p,:),vel_Li1(p,:),dt_i); %更新速度
+        vel_Li1(p,:)=Relativistic_Boris(m_Li,q_e,E_Li1(p,:),B_Li1(p,:),vel_Li1(p,:),dt_i); %更新速度
         pos_Li1(p,1)=pos_Li1(p,1)+vel_Li1(p,3)*dt_i;                          %更新位置
         
         %设置吸收边界条件，Li+与壁相互作用后消亡掉
@@ -661,7 +661,7 @@ for ts_i=1:step_num                 %运行的时间步数
         end
         
         %利用BORIS方法求出下一时刻的速度和位置
-        vel_Li2(p,:)=UpdateVelocity(E_Li2(p,:),B_Li2(p,:),vel_Li2(p,:),dt_i); %更新速度
+        vel_Li2(p,:)=Relativistic_Boris(m_Li,2*q_e,E_Li2(p,:),B_Li2(p,:),vel_Li2(p,:),dt_i); %更新速度
         pos_Li2(p,1)=pos_Li2(p,1)+vel_Li2(p,3)*dt_i;                          %更新位置
         
         %设置吸收边界条件，Li2+与壁相互作用后消亡掉
@@ -707,7 +707,7 @@ for ts_i=1:step_num                 %运行的时间步数
         end
         
         %利用BORIS方法求出下一时刻的速度和位置
-        vel_Li3(p,:)=UpdateVelocity(E_Li3(p,:),B_Li3(p,:),vel_Li3(p,:),dt_i); %更新速度
+        vel_Li3(p,:)=Relativistic_Boris(m_Li,3*q_e,E_Li3(p,:),B_Li3(p,:),vel_Li3(p,:),dt_i); %更新速度
         pos_Li3(p,1)=pos_Li3(p,1)+vel_Li3(p,3)*dt_i;                          %更新位置
         
         %设置吸收边界条件，Li3+与壁相互作用后消亡掉
