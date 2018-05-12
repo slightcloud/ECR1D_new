@@ -30,7 +30,7 @@ spwt=1e8;                                %每个宏粒子包含的真实粒子数
 vth_e=sqrt(2*q_e*0.5/m_e);               %电子的热速度，假设电子的热能为0.5 eV，单位：m/s
 T_e_ini = 0.01;                          %电子的初始平均能量
 T_Li1_ini = 0.025;                       %Li+的初始平均能量
-N_e=1000;                                %初始电子数目为N_e
+N_e=100000;                                %初始电子数目为N_e
 N_Li1=N_e;                                 %初始Li+的数目，使之与电子数目相同，保证初始状态的电中性
 N_Li2=0;                                 %Li2+的数目
 N_Li3=0;                                 %Li3+的数目
@@ -95,8 +95,8 @@ pos_Li1(1:N_Li1) = rand(N_Li1,1)*z_max;                                         
 
 %vel(1:N_e,:)=1e8;
 % vel_e(1:N_e,:)=vth_e*2*(rand(N_e,3)+rand(N_e,3)+rand(N_e,3)-1.5);                 %设置初始电子的速度在热速度的-3倍到3倍之间
-vel_e(1:N_e,:) = randraw('maxwell',T_e_ini*q_e/m_e,N_e).*random_unit_vector(3,N_e)';               %设置初始电子的速度，使之服从麦克斯韦分布
-vel_Li1(1:N_Li1,:) = randraw('maxwell',T_Li1_ini*q_e/m_Li,N_Li1).*random_unit_vector(3,N_Li1)';    %设置初始Li+的速度，使之服从麦克斯韦分布
+vel_e(1:N_e,:) = randraw('maxwell',sqrt(T_e_ini*q_e/m_e),N_e).*random_unit_vector(3,N_e)';               %设置初始电子的速度，使之服从麦克斯韦分布
+vel_Li1(1:N_Li1,:) = randraw('maxwell',sqrt(T_Li1_ini*q_e/m_Li),N_Li1).*random_unit_vector(3,N_Li1)';    %设置初始Li+的速度，使之服从麦克斯韦分布
 % vel_e(1:N_e,:)=Relativistic_Boris(m_e,-q_e,E_e(1:N_e,:),B_e(1:N_e,:),vel_e(1:N_e,:),-0.5*dt_e);    %将电子的速度向前移动半个时间步长
 
 %开始主循环，即对时间的循环
@@ -246,7 +246,7 @@ for ts_i=1:step_num                 %运行的时间步数
                     N_Li1=N_Li1+1;                                                           %产生了一个新的Li+
                     N_e=N_e+1;                                                               %产生了一个新的电子
                     pos_Li1(N_Li1)=pos_e(distri_e(N_e_sam(j,i),i));                              %新产生的Li+的位置与入射电子的相同
-                    vel_Li1(N_Li1,:)=randraw('maxwell',k*T/m_Li,1)*random_unit_vector(3,1)'; %新产生的Li+的速度服从麦克斯韦分布
+                    vel_Li1(N_Li1,:)=randraw('maxwell',sqrt(k*T/m_Li),1)*random_unit_vector(3,1)'; %新产生的Li+的速度服从麦克斯韦分布
                     pos_e(N_e)=pos_Li1(N_Li1);                                               %新产生的电子和新产生的Li+在相同的位置
 %                     vel_e_temp=0.5*sqrt(2*q_e*(Ek_e(j,i)-E_i_Li1)/m_e)*random_unit_vector(3,2);  %认为电子对离子的能量没有贡献，电子动能减去电离能后平分给散射电子和新产生的电子，random_unit_vector函数用来产生各向同性的电子
                     vel_e_temp=sqrt(c^2*(1-(1+0.5*(Ek_e(j,i)-E_i_Li1)*q_e/(m_e*c^2)).^(-2)))*random_unit_vector(3,2); %认为电子对离子的能量没有贡献，电子动能减去电离能后平分给散射电子和新产生的电子，random_unit_vector函数用来产生各向同性的电子
@@ -572,6 +572,36 @@ for ts_i=1:step_num                 %运行的时间步数
             p=p+1;
         end
         
+        %检测电中性条件是否满足
+        Q = -1*N_e+1*N_Li1+2*N_Li2+3*N_Li3;  %系统的总电荷量
+        if Q < 0                               %电子数目过多的情况
+            for i = 1:abs(Q)                 %从N_e个电子中随机选出abs(Q)个电子消亡掉
+                N_del = randperm(N_e,1);     %从1到N_e中随机选一个序号
+                if N_del == N_e              %选中的序号恰好是N_e
+                    N_e = N_e-1;             %直接将电子数目减少1个
+                    continue;                %继续下一个循环，不执行本for循环后面的语句
+                end
+                pos_e(N_del,1) = pos_e(N_e,1); %如果选中的序号不是N_e，则将最后一个电子的位置信息赋给要删除的电子
+                vel_e(N_del,:) = vel_e(N_e,:); %将最后一个电子的速度信息赋给要删除的电子
+                N_e = N_e-1;                   %电子的数目减少一个
+            end
+        end
+        if Q > 0                                %离子数目过多的情况
+            for i = 1:Q                         %从N_Li1个离子中随机选出Q个Li+消亡掉
+                N_del = randperm(N_Li1,1);       %从1到N_Li1中随机选一个序号
+                if N_del == N_Li1               %选中的序号恰好是N_Li1
+                    N_Li1 = N_Li1-1;            %直接将Li+的数目减小一个
+                    continue;                   %继续下一个循环，不执行本for循环后面的语句
+                end
+                pos_Li1(N_del,1) = pos_Li1(N_Li1,1); %如果选中的序号不是N_Li1,则将最后一个Li+的位置信息赋给要删除的Li+
+                vel_Li1(N_del,:) = vel_Li1(N_Li1,:); %将最后一个Li+的速度信息赋给要删除的Li+
+                N_Li1 = N_Li1-1;                     %Li+的数目减少一个
+            end
+        end
+            
+                
+        
+        
         fprintf('ts_e: %d, ts_i: %d,N_Li1: %d, N_Li2: %d, N_Li3: %d, P_emax: %f\n Average Energy: %f eV\n', ts_e,ts_i,N_Li1,N_Li2,N_Li3,max(P_emax),mean(Ek_e(1,:)));
         % plot(1:nz,E_mic(:,1));
         % pause(0.1);
@@ -623,7 +653,10 @@ for ts_i=1:step_num                 %运行的时间步数
             B_Li1(p,:)=B_Li1(p,:)+(1.5-hz)*B_mic_ave(i,:)+(hz-0.5)*B_mic_ave(i+1,:);
         end
         
-        %利用BORIS方法求出下一时刻的速度和位置
+        %利用相对论BORIS方法求出下一时刻的速度和位置
+        if ts_i == 1                                                                                %判断是否是刚开始进行速度推进
+            vel_Li1(p,:)=Relativistic_Boris(m_Li,q_e,E_Li1(p,:),B_Li1(p,:),vel_Li1(p,:),-0.5*dt_i); %首先将速度在时间上向前移动0.5dt_i
+        end
         vel_Li1(p,:)=Relativistic_Boris(m_Li,q_e,E_Li1(p,:),B_Li1(p,:),vel_Li1(p,:),dt_i); %更新速度
         pos_Li1(p,1)=pos_Li1(p,1)+vel_Li1(p,3)*dt_i;                          %更新位置
         
@@ -668,7 +701,10 @@ for ts_i=1:step_num                 %运行的时间步数
             B_Li2(p,:)=B_Li2(p,:)+(1.5-hz)*B_mic_ave(i,:)+(hz-0.5)*B_mic_ave(i+1,:);
         end
         
-        %利用BORIS方法求出下一时刻的速度和位置
+        %利用相对论BORIS方法求出下一时刻的速度和位置
+        if ts_i == 1                                                                                %判断是否是刚开始进行速度推进
+            vel_Li2(p,:)=Relativistic_Boris(m_Li,q_e,E_Li2(p,:),B_Li2(p,:),vel_Li2(p,:),-0.5*dt_i); %首先将速度在时间上向前移动0.5dt_i
+        end
         vel_Li2(p,:)=Relativistic_Boris(m_Li,2*q_e,E_Li2(p,:),B_Li2(p,:),vel_Li2(p,:),dt_i); %更新速度
         pos_Li2(p,1)=pos_Li2(p,1)+vel_Li2(p,3)*dt_i;                          %更新位置
         
@@ -714,7 +750,10 @@ for ts_i=1:step_num                 %运行的时间步数
             B_Li3(p,:)=B_Li3(p,:)+(1.5-hz)*B_mic_ave(i,:)+(hz-0.5)*B_mic_ave(i+1,:);
         end
         
-        %利用BORIS方法求出下一时刻的速度和位置
+        %利用相对论BORIS方法求出下一时刻的速度和位置
+        if ts_i == 1                                                                                %判断是否是刚开始进行速度推进
+            vel_Li3(p,:)=Relativistic_Boris(m_Li,q_e,E_Li3(p,:),B_Li3(p,:),vel_Li3(p,:),-0.5*dt_i); %首先将速度在时间上向前移动0.5dt_i
+        end
         vel_Li3(p,:)=Relativistic_Boris(m_Li,3*q_e,E_Li3(p,:),B_Li3(p,:),vel_Li3(p,:),dt_i); %更新速度
         pos_Li3(p,1)=pos_Li3(p,1)+vel_Li3(p,3)*dt_i;                          %更新位置
         
@@ -732,6 +771,34 @@ for ts_i=1:step_num                 %运行的时间步数
         
         p=p+1;
     end
+    
+    %检测电中性条件是否满足
+    Q = -1*N_e+1*N_Li1+2*N_Li2+3*N_Li3;  %系统的总电荷量
+    if Q < 0                               %电子数目过多的情况
+        for i = 1:abs(Q)                 %从N_e个电子中随机选出abs(Q)个电子消亡掉
+            N_del = randperm(N_e,1);     %从1到N_e中随机选一个序号
+            if N_del == N_e              %选中的序号恰好是N_e
+                N_e = N_e-1;             %直接将电子数目减少1个
+                continue;                %继续下一个循环，不执行本for循环后面的语句
+            end
+            pos_e(N_del,1) = pos_e(N_e,1); %如果选中的序号不是N_e，则将最后一个电子的位置信息赋给要删除的电子
+            vel_e(N_del,:) = vel_e(N_e,:); %将最后一个电子的速度信息赋给要删除的电子
+            N_e = N_e-1;                   %电子的数目减少一个
+        end
+    end
+    if Q > 0                                %离子数目过多的情况
+        for i = 1:Q                         %从N_Li1个离子中随机选出Q个Li+消亡掉
+            N_del = randperm(N_Li1,1);       %从1到N_Li1中随机选一个序号
+            if N_del == N_Li1               %选中的序号恰好是N_Li1
+                N_Li1 = N_Li1-1;            %直接将Li+的数目减小一个
+                continue;                   %继续下一个循环，不执行本for循环后面的语句
+            end
+            pos_Li1(N_del,1) = pos_Li1(N_Li1,1); %如果选中的序号不是N_Li1,则将最后一个Li+的位置信息赋给要删除的Li+
+            vel_Li1(N_del,:) = vel_Li1(N_Li1,:); %将最后一个Li+的速度信息赋给要删除的Li+
+            N_Li1 = N_Li1-1;                     %Li+的数目减少一个
+        end
+    end
+    
 end
 
 filename=strcat(datestr(clock,'yy-mm-dd-HH-MM-SS'),'E_mic.txt');
