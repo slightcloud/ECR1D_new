@@ -28,8 +28,10 @@ nz=round(L_real/dz)+1;                   %格点数
 z_max=dz*(nz-1);                         %模拟区域z方向的最大值
 spwt=1e8;                                %每个宏粒子包含的真实粒子数
 vth_e=sqrt(2*q_e*0.5/m_e);               %电子的热速度，假设电子的热能为0.5 eV，单位：m/s
-N_e=100000;                                %初始电子数目为N_e
-N_Li1=0;                                 %Li+的数目
+T_e_ini = 0.01;                          %电子的初始平均能量
+T_Li1_ini = 0.025;                       %Li+的初始平均能量
+N_e=1000;                                %初始电子数目为N_e
+N_Li1=N_e;                                 %初始Li+的数目，使之与电子数目相同，保证初始状态的电中性
 N_Li2=0;                                 %Li2+的数目
 N_Li3=0;                                 %Li3+的数目
 N_Li_ex=0;                               %激发态Li原子的数目
@@ -86,13 +88,16 @@ vel_Li_ex=zeros(max_part,3);    %激发态的Li原子的速度信息
 
 %给定初始电子的位置和速度
 pos_e(1:N_e)=rand(N_e,1)*z_max;                                                   %初始电子的位置在0到z_max之间
+pos_Li1(1:N_Li1) = rand(N_Li1,1)*z_max;                                           %初始Li+的位置在0到z_max之间
 
 %vel(1:N_e/2,:)=vth_e*rand(N_e/2,3);
 %vel(N_e/2+1:N_e,:)=-vth_e*rand(N_e/2,3);
 
 %vel(1:N_e,:)=1e8;
-vel_e(1:N_e,:)=vth_e*2*(rand(N_e,3)+rand(N_e,3)+rand(N_e,3)-1.5);                 %设置初始电子的速度在热速度的-3倍到3倍之间
-vel_e(1:N_e,:)=Relativistic_Boris(m_e,-q_e,E_e(1:N_e,:),B_e(1:N_e,:),vel_e(1:N_e,:),-0.5*dt_e);    %将电子的速度向前移动半个时间步长
+% vel_e(1:N_e,:)=vth_e*2*(rand(N_e,3)+rand(N_e,3)+rand(N_e,3)-1.5);                 %设置初始电子的速度在热速度的-3倍到3倍之间
+vel_e(1:N_e,:) = randraw('maxwell',T_e_ini*q_e/m_e,N_e).*random_unit_vector(3,N_e)';               %设置初始电子的速度，使之服从麦克斯韦分布
+vel_Li1(1:N_Li1,:) = randraw('maxwell',T_Li1_ini*q_e/m_Li,N_Li1).*random_unit_vector(3,N_Li1)';    %设置初始Li+的速度，使之服从麦克斯韦分布
+% vel_e(1:N_e,:)=Relativistic_Boris(m_e,-q_e,E_e(1:N_e,:),B_e(1:N_e,:),vel_e(1:N_e,:),-0.5*dt_e);    %将电子的速度向前移动半个时间步长
 
 %开始主循环，即对时间的循环
 for ts_i=1:step_num                 %运行的时间步数
@@ -333,10 +338,10 @@ for ts_i=1:step_num                 %运行的时间步数
         
         %计算每个格点上的粒子密度
         for count_i=2:nz-1
-            count_g_Li(count_i,:)=0.5*(count_Li(count_i-1,:)+count_Li(count_i,:))/(2*dz);
+            count_g_Li(count_i,:)=0.5*(count_Li(count_i-1,:)+count_Li(count_i,:))/(2*dz);  %认为一个单元内的粒子数对两边的格点都有贡献，因此对半分
         end
-        count_g_Li(1,:)=count_Li(1,:)/dz;      %第一个格点的粒子密度
-        count_g_Li(nz,:)=count_Li(nz-1,:)/dz;  %最后一个格点的粒子密度
+        count_g_Li(1,:)=0.5*count_Li(1,:)/dz;      %第一个格点的粒子密度
+        count_g_Li(nz,:)=0.5*count_Li(nz-1,:)/dz;  %最后一个格点的粒子密度
         
         J_i=1e5*(den_vel_Li1.*count_g_Li(:,1)+den_vel_Li2.*count_g_Li(:,2)+den_vel_Li3.*count_g_Li(:,3));  %离子在每个格点上的电流密度
         
@@ -398,8 +403,8 @@ for ts_i=1:step_num                 %运行的时间步数
         for count_i=2:nz-1
             count_g(count_i)=0.5*(count(count_i-1)+count(count_i))/(2*dz);
         end
-        count_g(1)=count(1)/dz;      %第一个格点的电子密度
-        count_g(nz)=count(nz-1)/dz;  %最后一个格点的电子密度
+        count_g(1)=0.5*count(1)/dz;      %第一个格点的电子密度
+        count_g(nz)=0.5*count(nz-1)/dz;  %最后一个格点的电子密度
         
         J=1e5*den_vel_e.*count_g+J_i;          %计算每个格点上的电流密度
         
@@ -545,7 +550,10 @@ for ts_i=1:step_num                 %运行的时间步数
                 B_e(p,:)=B_e(p,:)+(1.5-hz)*B_mic_ave(i,:)+(hz-0.5)*B_mic_ave(i+1,:);
             end
             
-            %利用BORIS方法求出下一时刻的速度和位置
+            %利用相对论BORIS方法求出下一时刻的速度和位置
+            if ts_e == 1
+                vel_e(p,:)=Relativistic_Boris(m_e,-q_e,E_e(p,:),B_e(p,:),vel_e(p,:),-0.5*dt_e);    %第一步先将电子的速度向前移动半个时间步长
+            end
             vel_e(p,:)=Relativistic_Boris(m_e,-q_e,E_e(p,:),B_e(p,:),vel_e(p,:),dt_e); %更新速度
             pos_e(p,1)=pos_e(p,1)+vel_e(p,3)*dt_e;                          %更新位置
             
