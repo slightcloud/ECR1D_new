@@ -8,6 +8,7 @@ subplot(3,1,2);
 scatter(pos_e(1:N_e,1),vel_e(1:N_e,2));   %z-vy
 subplot(3,1,3);
 scatter(pos_e(1:N_e,1),vel_e(1:N_e,3));   %z-vz
+suptitle('z-v of electrons');
 
 % z-v of Li+
 figure(2);
@@ -17,16 +18,19 @@ subplot(3,1,2);
 scatter(pos_Li1(1:N_Li1,1),vel_Li1(1:N_Li1,2));   %z-vy
 subplot(3,1,3);
 scatter(pos_Li1(1:N_Li1,1),vel_Li1(1:N_Li1,3));   %z-vz
+suptitle('z-v of Li+');
 
 % z-N_p
 
 figure(3);
-scatter((100:nz-1)*dz,count(100:nz-1,1));
+scatter((1:nz-1)*dz,count(1:nz-1,1));
 hold on
-scatter((100:nz-1)*dz,count_Li(100:nz-1,1));
-scatter((100:nz-1)*dz,count_Li(100:nz-1,2));
+scatter((1:nz-1)*dz,count_Li(1:nz-1,1));
+scatter((1:nz-1)*dz,count_Li(1:nz-1,2));
 legend('e','Li+','Li2+');
 hold off
+title('z-particle number');
+
 
 % microwave
 
@@ -39,8 +43,10 @@ subplot(2,2,3);
 plot([0,(1:nz-1)*dz],B_mic(:,1));
 subplot(2,2,4);
 plot([0,(1:nz-1)*dz],B_mic(:,2));
+suptitle('z-microwave');
 
 % Potential
 
 figure(5);
 plot([0,(1:nz-1)*dz],phi(:,1));
+title('z-potential');

@@ -2,7 +2,7 @@
 clear variables
 clc
 
-global q_e m_e EPS0 c
+global q_e m_e EPS0 c dz
 
 %定义基本参量
 q_e=1.602e-19;              %电子电量，单位：C
@@ -28,15 +28,15 @@ nz=round(L_real/dz)+1;                   %格点数
 z_max=dz*(nz-1);                         %模拟区域z方向的最大值
 spwt=1e8;                                %每个宏粒子包含的真实粒子数
 vth_e=sqrt(2*q_e*0.5/m_e);               %电子的热速度，假设电子的热能为0.5 eV，单位：m/s
-T_e_ini = 0.01;                          %电子的初始平均能量
-T_Li1_ini = 0.025;                       %Li+的初始平均能量
+T_e_ini = 0.1;                          %电子的初始平均能量
+T_Li1_ini = 0.25;                       %Li+的初始平均能量
 N_e=100000;                                %初始电子数目为N_e
 N_Li1=N_e;                                 %初始Li+的数目，使之与电子数目相同，保证初始状态的电中性
 N_Li2=0;                                 %Li2+的数目
 N_Li3=0;                                 %Li3+的数目
 N_Li_ex=0;                               %激发态Li原子的数目
 tol=1e-6;                               %电势求解的精度值
-sor=1.4;                                 %超松驰迭代的因子
+sor=1.9;                                 %超松驰迭代的因子
 max_part=1000000;                           %粒子容器的最大值
 %B_ex_z=0.0875;                          %外部永磁铁产生的磁感应强度，单位：T
 E0=1.5e6;                                %微波电场强度的幅值，单位：V/m（不确定）
@@ -343,7 +343,7 @@ for ts_i=1:step_num                 %运行的时间步数
         count_g_Li(1,:)=0.5*count_Li(1,:)/dz;      %第一个格点的粒子密度
         count_g_Li(nz,:)=0.5*count_Li(nz-1,:)/dz;  %最后一个格点的粒子密度
         
-        J_i=1e5*(den_vel_Li1.*count_g_Li(:,1)+den_vel_Li2.*count_g_Li(:,2)+den_vel_Li3.*count_g_Li(:,3));  %离子在每个格点上的电流密度
+        J_i=1e3*(den_vel_Li1.*count_g_Li(:,1)+den_vel_Li2.*count_g_Li(:,2)+den_vel_Li3.*count_g_Li(:,3));  %离子在每个格点上的电流密度
         
         
         
@@ -406,7 +406,7 @@ for ts_i=1:step_num                 %运行的时间步数
         count_g(1)=0.5*count(1)/dz;      %第一个格点的电子密度
         count_g(nz)=0.5*count(nz-1)/dz;  %最后一个格点的电子密度
         
-        J=1e5*den_vel_e.*count_g+J_i;          %计算每个格点上的电流密度
+        J=1e3*den_vel_e.*count_g+J_i;          %计算每个格点上的电流密度
         
         %应用边界条件，在边界上仅有一半的长度有贡献，因此边界上的密度应当×2
         den(1)=2*den(1);   %左边界
@@ -449,6 +449,9 @@ for ts_i=1:step_num                 %运行的时间步数
         
         
         
+        
+        
+        
         A=blktridiag(2,-1,-1,nz);
         B=full(A);
         B(1,:)=0*B(1,:);
@@ -474,6 +477,11 @@ for ts_i=1:step_num                 %运行的时间步数
         connection_threshold=0.25;
         [phi,error,iter,flag]=AMG(K,F, W, level,  relax_it, relax_para, ...
             post_smoothing, max_iter, tol,  pc_type, connection_threshold);
+
+
+%         phi = GS_SOR(den,nz,tol,sor,1);
+        
+        
         
         
         
