@@ -21,16 +21,16 @@ T=273.15+300;               %系统温度为300℃，单位：K
 lamda=sqrt(EPS0*Te_average/(n0*q_e));    %德拜长度，单位：m
 z_min=0;                                 %z方向的最小值，单位：m
 L_real=0.1035;                           %离子源z方向的最大值，单位：m
-dz=lamda;                                %设置空间间隔
+dz=2*lamda;                                %设置空间间隔
 dt_e=dz/(2*c);                             %设置时间间隔，为保证模拟精确度，保证dt<=dz/c，一般设为dz/(2*c)单位：s
 dt_i=100*dt_e;                           %离子的运动时间设置为电子运动时间的100倍
 nz=round(L_real/dz)+1;                   %格点数
 z_max=dz*(nz-1);                         %模拟区域z方向的最大值
 spwt=1e8;                                %每个宏粒子包含的真实粒子数
 vth_e=sqrt(2*q_e*0.5/m_e);               %电子的热速度，假设电子的热能为0.5 eV，单位：m/s
-T_e_ini = 0.1;                          %电子的初始平均能量
+T_e_ini = 1.8;                          %电子的初始平均能量
 T_Li1_ini = 0.25;                       %Li+的初始平均能量
-N_e=100000;                                %初始电子数目为N_e
+N_e=90000;                                %初始电子数目为N_e
 N_Li1=N_e;                                 %初始Li+的数目，使之与电子数目相同，保证初始状态的电中性
 N_Li2=0;                                 %Li2+的数目
 N_Li3=0;                                 %Li3+的数目
@@ -39,7 +39,7 @@ tol=1e-6;                               %电势求解的精度值
 sor=1.9;                                 %超松驰迭代的因子
 max_part=1000000;                           %粒子容器的最大值
 %B_ex_z=0.0875;                          %外部永磁铁产生的磁感应强度，单位：T
-E0=1.5e6;                                %微波电场强度的幅值，单位：V/m（不确定）
+E0=1.5e4;                                %微波电场强度的幅值，单位：V/m（不确定）
 B0=0.0001;                               %微波磁感应强度的幅值，单位:T（不确定）
 w=2.45;                                  %微波的频率,单位:GHz
 step_num=1000;                          %总共运行的时间步数
@@ -281,6 +281,8 @@ for ts_i=1:step_num                 %运行的时间步数
                 end
             end
         end
+        
+        count_Li=zeros(nz-1,3);            %用于计算每个单元格内的粒子数，1~3列分别代表Li+，Li2+和Li3+
         
         %分配Li+的电荷和电流密度到临近格点上
         for p=1:N_Li1
@@ -611,8 +613,8 @@ for ts_i=1:step_num                 %运行的时间步数
         
         
         fprintf('ts_e: %d, ts_i: %d,N_Li1: %d, N_Li2: %d, N_Li3: %d, P_emax: %f\n Average Energy: %f eV\n', ts_e,ts_i,N_Li1,N_Li2,N_Li3,max(P_emax),mean(Ek_e(1,:)));
-        % plot(1:nz,E_mic(:,1));
-        % pause(0.1);
+        plot(1:nz,E_mic(:,1));
+        drawnow;
     end
     
     %将格点上的静电场和电磁场全部分配到每个离子上，另外还要加上外部永磁体产生的磁场
@@ -811,13 +813,17 @@ end
 
 filename=strcat(datestr(clock,'yy-mm-dd-HH-MM-SS'),'E_mic.txt');
 fid=fopen(filename,'wt');       %将微波电场数据写到E_mic.txt中，三列分别是时Ex,Ey,Ez，行数代表的是nz个格点
-[row,col]=size(E_mic);
+[row,~]=size(E_mic);
 for i=1:1:row
-    for j=1:1:col
-        if (j==col)
-            fprintf(fid,'%g\n',E_mic(i,j));
-        else
-            fprintf(fid,'%g\t',E_mic(i,j));
+    for j=1:1:4
+        if (j==1)
+            fprintf(fid,'%f\t',(i-1)*dz);
+        end
+        if j>1 && j<4
+            fprintf(fid,'%g\t',E_mic(i,j-1));
+        end
+        if j == 4
+            fprintf(fid,'%g\n',E_mic(i,j-1));
         end
     end
 end
@@ -825,13 +831,17 @@ fclose(fid);
 
 filename=strcat(datestr(clock,'yy-mm-dd-HH-MM-SS'),'B_mic.txt');
 fid=fopen(filename,'wt');       %将微波磁场数据写到B_mic.txt中，三列分别是时Bx,By,Bz，行数代表的是nz个格点
-[row,col]=size(B_mic);
+[row,~]=size(B_mic);
 for i=1:1:row
-    for j=1:1:col
-        if (j==col)
-            fprintf(fid,'%g\n',B_mic(i,j));
-        else
-            fprintf(fid,'%g\t',B_mic(i,j));
+    for j=1:1:4
+        if (j==1)
+            fprintf(fid,'%f\t',(i-1)*dz);
+        end
+        if j>1 && j<4
+            fprintf(fid,'%g\t',B_mic(i,j-1));
+        end
+        if j == 4
+            fprintf(fid,'%g\n',B_mic(i,j-1));
         end
     end
 end
